@@ -138,7 +138,17 @@ function simpanSesi(res) {
 // INIT
 // ============================================
 document.addEventListener('DOMContentLoaded', () => {
-  warmUpServer();
+  // Gerbang konfigurasi: jika config.js belum diisi URL /exec yang benar,
+  // tampilkan peringatan yang jelas di layar (bukan dibiarkan gagal diam-diam
+  // sebagai error CORS/404 yang membingungkan di console).
+  if (typeof GAS_URL_BELUM_DIISI !== 'undefined' && GAS_URL_BELUM_DIISI) {
+    const bar = document.createElement('div');
+    bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999;background:#EF4444;color:#fff;padding:10px 16px;font-size:13px;font-weight:600;text-align:center;';
+    bar.textContent = '⚠️ js/config.js belum diisi URL /exec Apps Script Anda (masih placeholder GANTI_DENGAN_DEPLOYMENT_ID_ANDA) — semua pemanggilan API akan gagal sampai ini diperbaiki.';
+    document.body.prepend(bar);
+  } else {
+    warmUpServer();
+  }
   const sesiAda = restoreSession();
   window.addEventListener('hashchange', route);
   if (!location.hash) location.hash = '#/' + defaultPage();

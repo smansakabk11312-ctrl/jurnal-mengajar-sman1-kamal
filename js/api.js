@@ -36,7 +36,13 @@ const Perf = {
 
 const READ_ACTIONS = /^(guruBootstrap|wakaBootstrap|riwayatJurnal|daftarAsesmen|daftarJurnalWali|daftarPemetaanMurid|rekapKehadiranBinaan|daftarCatatanKarakter|daftarKomunikasiOrtu|daftarProgramBimbingan|monitorJurnal|laporanRekap|daftarGuru|daftarJadwalSemua|migrasi\.pindai|migrasi\.log|notif\.config|notif\.queue|wa\.device|wa\.audience|wa\.blastList|crm\.list|crm\.stats|de\.templateList|de\.riwayatDokumen)$/;
 
+const GAS_URL_BELUM_DIISI = /GANTI_DENGAN_DEPLOYMENT_ID_ANDA/.test(GAS_URL);
+
 async function apiOnce(action, data, timeout, reqId) {
+  if (GAS_URL_BELUM_DIISI) {
+    return { success: false, network: true, retryable: false,
+      message: 'js/config.js belum diisi dengan URL /exec Apps Script Anda (masih placeholder). Edit GAS_URL lalu deploy ulang.' };
+  }
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeout);
   const t0 = performance.now();
