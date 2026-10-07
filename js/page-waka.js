@@ -204,39 +204,147 @@ function gambarBarChart(canvas, dataObj) {
 // ============================================
 // Kelola Guru & Jadwal
 // ============================================
+// Unduh file dari base64 yang dikembalikan backend (dipakai Export Template/Data Guru).
+function downloadBase64File(base64, filename, mime) {
+  const bytes = atob(base64);
+  const arr = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+  const blob = new Blob([arr], { type: mime || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
 registerPage('kelola-guru', {
   auth: 'waka',
   template: () => `
-    <div class="page-head"><h1 class="headline-lg">Kelola Akun Guru</h1></div>
+    <div class="page-head"><h1 class="headline-lg">Kelola Akun Guru</h1>
+      <p class="body-sm text-muted">Tambah guru satu-satu lewat form, atau massal lewat Import Excel.</p></div>
     <div class="card form-stack">
-      <h3 class="headline-sm">Tambah Guru Baru</h3>
+      <h3 class="headline-sm" id="kg-form-title">Tambah Guru Baru</h3>
+      <input type="hidden" id="kg-edit-nip-asli">
       <input type="text" id="kg-nip" placeholder="NIP">
       <input type="text" id="kg-nama" placeholder="Nama Lengkap">
       <input type="email" id="kg-email" placeholder="Email">
       <input type="text" id="kg-wa" placeholder="No. WA (08xxxx)">
       <label><input type="checkbox" id="kg-wali"> Tandai sebagai Guru Wali</label>
       <input type="text" id="kg-kelasbinaan" placeholder="Kelas binaan (jika Guru Wali)">
-      <button class="btn btn-primary" id="btn-tambah-guru">Tambah</button>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btn-simpan-guru">Tambah</button>
+        <button class="btn btn-ghost" id="btn-batal-edit-guru" hidden>Batal</button>
+      </div>
+    </div>
+    <div class="card form-stack">
+      <h3 class="headline-sm">Export / Import Excel (.xlsx)</h3>
+      <p class="body-sm text-muted">Import mencocokkan baris berdasarkan kolom NIP — NIP yang sudah ada akan diperbarui, yang belum ada otomatis jadi akun baru (password default 12345678).</p>
+      <div class="btn-row">
+        <button class="btn btn-ghost" id="btn-export-template">⬇️ Unduh Template Excel</button>
+        <button class="btn btn-ghost" id="btn-export-data">⬇️ Export Semua Data Guru</button>
+      </div>
+      <div class="btn-row">
+        <input type="file" id="kg-file-import" accept=".xlsx">
+        <button class="btn btn-primary" id="btn-import-guru">⬆️ Import Excel</button>
+      </div>
+      <div id="hasil-import-guru"></div>
     </div>
     <div id="tabel-guru" class="card"></div>`,
   show(el) {
-    el.querySelector('#btn-tambah-guru').onclick = async () => {
-      const res = await api('kelolaGuru', {
-        aksi: 'tambah', nip: el.querySelector('#kg-nip').value, nama: el.querySelector('#kg-nama').value,
-        email: el.querySelector('#kg-email').value, noWA: el.querySelector('#kg-wa').value,
-        isGuruWali: el.querySelector('#kg-wali').checked, kelasBinaan: el.querySelector('#kg-kelasbinaan').value
-      });
+    function resetForm() {
+      el.querySelector('#kg-edit-nip-asli').value = '';
+      ['#kg-nip', '#kg-nama', '#kg-email', '#kg-wa', '#kg-kelasbinaan'].forEach(s => el.querySelector(s).value = '');
+      el.querySelector('#kg-wali').checked = false;
+      el.querySelector('#kg-nip').disabled = false;
+      el.querySelector('#kg-form-title').textContent = 'Tambah Guru Baru';
+      el.querySelector('#btn-simpan-guru').textContent = 'Tambah';
+      el.querySelector('#btn-batal-edit-guru').hidden = true;
+    }
+    el.querySelector('#btn-batal-edit-guru').onclick = resetForm;
+
+    el.querySelector('#btn-simpan-guru').onclick = async () => {
+      const nipAsli = el.querySelector('#kg-edit-nip-asli').value;
+      const payload = {
+        aksi: nipAsli ? 'ubah' : 'tambah',
+        nip: nipAsli || el.querySelector('#kg-nip').value,
+        nama: el.querySelector('#kg-nama').value,
+        email: el.querySelector('#kg-email').value,
+        noWA: el.querySelector('#kg-wa').value,
+        isGuruWali: el.querySelector('#kg-wali').checked,
+        kelasBinaan: el.querySelector('#kg-kelasbinaan').value
+      };
+      const res = await api('kelolaGuru', payload);
       showToast(res.message, res.success ? 'success' : 'error');
-      if (res.success) muat();
+      if (res.success) { resetForm(); muat(); }
     };
+
+    el.querySelector('#btn-export-template').onclick = async () => {
+      showLoading(true);
+      const res = await api('guru.exportTemplate', {});
+      showLoading(false);
+      if (!res.success) return showToast(res.message, 'error');
+      downloadBase64File(res.data.base64, res.data.filename);
+    };
+    el.querySelector('#btn-export-data').onclick = async () => {
+      showLoading(true);
+      const res = await api('guru.export', {});
+      showLoading(false);
+      if (!res.success) return showToast(res.message, 'error');
+      downloadBase64File(res.data.base64, res.data.filename);
+    };
+    el.querySelector('#btn-import-guru').onclick = async () => {
+      const file = el.querySelector('#kg-file-import').files[0];
+      if (!file) return showToast('Pilih file .xlsx dulu.', 'error');
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = reader.result.split(',')[1];
+        showLoading(true);
+        const res = await api('guru.import', { base64: base64, filename: file.name });
+        showLoading(false);
+        const box = el.querySelector('#hasil-import-guru');
+        box.innerHTML = `<div class="banner ${res.success ? 'banner-success' : 'banner-danger'}">${esc(res.message)}</div>`;
+        if (res.success) { el.querySelector('#kg-file-import').value = ''; muat(); }
+      };
+      reader.readAsDataURL(file);
+    };
+
     function muat() {
       api('daftarGuru', {}).then(res => {
         if (!res.success) return;
         el.querySelector('#tabel-guru').innerHTML = res.data.rows.length
-          ? `<table class="table"><thead><tr><th>NIP</th><th>Nama</th><th>Guru Wali</th><th>Barcode</th><th>Status</th></tr></thead><tbody>
-          ${res.data.rows.map(g => `<tr><td>${esc(g.nip)}</td><td>${esc(g.nama)}</td><td>${g.isGuruWali ? 'Ya' : '—'}</td><td class="mono">${esc(g.kodeBarcode)}</td><td>${esc(g.status)}</td></tr>`).join('')}
+          ? `<table class="table"><thead><tr><th>NIP</th><th>Nama</th><th>Guru Wali</th><th>Barcode</th><th>Status</th><th></th></tr></thead><tbody>
+          ${res.data.rows.map(g => `<tr>
+            <td>${esc(g.nip)}</td><td>${esc(g.nama)}</td><td>${g.isGuruWali ? 'Ya' : '—'}</td>
+            <td class="mono">${esc(g.kodeBarcode)}</td><td>${esc(g.status)}</td>
+            <td class="btn-row">
+              <button class="btn btn-ghost btn-sm" data-edit="${esc(g.nip)}">Edit</button>
+              ${g.status === 'Aktif' ? `<button class="btn btn-danger btn-sm" data-hapus="${esc(g.nip)}">Nonaktifkan</button>` : ''}
+            </td>
+          </tr>`).join('')}
           </tbody></table>`
           : emptyState('👥', 'Belum ada guru terdaftar. Tambahkan guru pertama lewat form di atas.');
+
+        el.querySelectorAll('[data-edit]').forEach(btn => btn.onclick = () => {
+          const g = res.data.rows.find(x => x.nip === btn.dataset.edit);
+          if (!g) return;
+          el.querySelector('#kg-edit-nip-asli').value = g.nip;
+          el.querySelector('#kg-nip').value = g.nip; el.querySelector('#kg-nip').disabled = true;
+          el.querySelector('#kg-nama').value = g.nama;
+          el.querySelector('#kg-email').value = g.email;
+          el.querySelector('#kg-wa').value = g.noWA;
+          el.querySelector('#kg-wali').checked = g.isGuruWali;
+          el.querySelector('#kg-kelasbinaan').value = g.kelasBinaan;
+          el.querySelector('#kg-form-title').textContent = 'Edit Guru — ' + g.nama;
+          el.querySelector('#btn-simpan-guru').textContent = 'Simpan Perubahan';
+          el.querySelector('#btn-batal-edit-guru').hidden = false;
+          el.scrollIntoView({ behavior: 'smooth' });
+        });
+        el.querySelectorAll('[data-hapus]').forEach(btn => btn.onclick = async () => {
+          if (!confirm('Nonaktifkan akun guru ini? Guru tidak akan bisa login lagi, tapi riwayat jurnalnya tetap aman.')) return;
+          const res2 = await api('kelolaGuru', { aksi: 'hapus', nip: btn.dataset.hapus });
+          showToast(res2.message, res2.success ? 'success' : 'error');
+          if (res2.success) muat();
+        });
       });
     }
     muat();

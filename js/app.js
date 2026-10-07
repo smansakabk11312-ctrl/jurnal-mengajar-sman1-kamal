@@ -22,9 +22,15 @@ function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ 
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 
 function logout() {
+  // PENTING: sesi disimpan di localStorage dengan key polos 'session' (lihat simpanSesi()/
+  // restoreSession()), BUKAN userKey('session'). Dulu baris ini salah menghapus userKey('session')
+  // (jadi 'u:anon:session' karena nip sudah dikosongkan duluan) sehingga sesi lama tidak pernah
+  // benar-benar terhapus — begitu halaman dibuka/refresh lagi, restoreSession() menemukan sesi
+  // lama masih valid dan otomatis login ulang ke dashboard sebelumnya.
+  Store.del('session');
   AppState.token = ''; AppState.nip = ''; AppState.role = ''; AppState.isGuruWali = false;
-  Store.del(userKey('session'));
   document.querySelectorAll('.page').forEach(p => p.remove());
+  document.body.dataset.role = '';
   go('login');
 }
 

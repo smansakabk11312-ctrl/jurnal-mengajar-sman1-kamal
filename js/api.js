@@ -117,7 +117,9 @@ async function swr(key, action, payload, render, opt) {
 }
 
 function onSessionExpired() {
-  AppState.token = ''; Store.del(userKey('session'));
+  // Sama seperti logout(): hapus key 'session' polos, bukan userKey('session').
+  Store.del('session');
+  AppState.token = '';
   showToast('Sesi berakhir, silakan login kembali.', 'error');
   go('login');
 }
